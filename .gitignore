@@ -10,3 +10,4 @@ data/parsed/
 venv/
 *.egg-info/
 textbooks/
+data/graph/

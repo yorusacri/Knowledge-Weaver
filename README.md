@@ -29,7 +29,7 @@ cd frontend && npm install
 uv run uvicorn src.main:app --reload --port 8000
 
 # 启动前端 (端口 5173)
-cd frontend && npm run dev
+cd frontend ; npm run dev
 ```
 
 访问 http://localhost:5173 即可使用。

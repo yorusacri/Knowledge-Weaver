@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   BookOpen, Network, GitMerge, MessageCircle, FileText,
-  ChevronLeft, ChevronRight, Search,
+  ChevronLeft, ChevronRight, Search, Loader,
 } from 'lucide-react';
 
 import FileUploader from './components/FileUploader';
@@ -13,7 +13,7 @@ import RAGTab from './components/RAGTab';
 import DialogueTab from './components/DialogueTab';
 import ReportTab from './components/ReportTab';
 import { useStore } from './store';
-import { uploadFiles, listTextbooks, getParsed, deleteTextbook, getTextbookStatus, getGraphData, getAllGraphData } from './api';
+import { uploadFiles, listTextbooks, getParsed, deleteTextbook, getTextbookStatus, getGraphData, getAllGraphData, buildGraph } from './api';
 
 const TABS = [
   { key: 'integration', label: '整合操作', icon: GitMerge },
@@ -37,6 +37,8 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [graphBuilding, setGraphBuilding] = useState(false);
+  const [graphStatus, setGraphStatus] = useState('');
 
   const refresh = useCallback(async () => {
     try {
@@ -90,12 +92,45 @@ export default function App() {
 
   const handleSelectBook = async (id) => {
     setSelectedBook(id);
+    setGraphBuilding(true);
+    setGraphStatus('正在获取图谱数据...');
     try {
       const data = await getGraphData(id);
       setGraphData(data);
-    } catch {
-      // Keep demo data
+      setGraphBuilding(false);
+      setGraphStatus('');
+      return;
+    } catch (e) {
+      console.log('Graph not found, triggering build:', e.message);
     }
+
+    // Graph doesn't exist yet - trigger build
+    try {
+      setGraphStatus('正在调用 LLM 提取知识点，请稍候...');
+      await buildGraph(id);
+      console.log('Build triggered, polling for result...');
+      // Poll until graph is ready (max ~120s)
+      for (let i = 0; i < 60; i++) {
+        setGraphStatus(`正在构建图谱... (${i * 2}s)`);
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const data = await getGraphData(id);
+          setGraphData(data);
+          console.log('Graph loaded successfully');
+          setGraphBuilding(false);
+          setGraphStatus('');
+          return;
+        } catch {
+          /* not ready yet */
+        }
+      }
+      console.error('Graph build timed out after 120s');
+      setGraphStatus('图谱构建超时，请检查后端日志');
+    } catch (e) {
+      console.error('Graph build failed:', e);
+      setGraphStatus(`构建失败: ${e.message}`);
+    }
+    setGraphBuilding(false);
   };
 
   const handleDeleteBook = async (id) => {
@@ -358,6 +393,26 @@ export default function App() {
             showLabels={showLabels}
             onToggleLabels={() => setShowLabels(!showLabels)}
           />
+
+          {/* Graph building overlay */}
+          {graphBuilding && (
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'rgba(255, 255, 255, 0.85)',
+              backdropFilter: 'blur(8px)',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              gap: 16, zIndex: 100,
+            }}>
+              <Loader size={36} className="animate-spin" style={{ color: 'var(--accent)' }} />
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                正在构建知识图谱...
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {graphStatus || 'LLM 正在提取知识点和关系，请稍候'}
+              </div>
+            </div>
+          )}
 
           {/* Node detail overlay */}
           <NodeDetail

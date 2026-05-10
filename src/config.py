@@ -9,6 +9,8 @@ PARSED_DIR = DATA_DIR / "parsed"
 
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 PARSED_DIR.mkdir(parents=True, exist_ok=True)
+GRAPH_DIR = DATA_DIR / "graph"
+GRAPH_DIR.mkdir(parents=True, exist_ok=True)
 
 SUPPORTED_FORMATS = {"pdf", "md", "markdown", "txt", "docx"}
 MAX_FILE_SIZE_MB = 500

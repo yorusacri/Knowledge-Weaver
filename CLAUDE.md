@@ -112,3 +112,7 @@ npm run dev
 # Docker (if docker-compose.yml exists)
 docker-compose up --build
 ```
+
+## Rules for Claude
+
+- **不要启动或重启前后端程序。** 所有前后端程序由用户自己运行。Claude 只负责写代码，不负责启动服务。如果需要测试 API，让用户自己在浏览器或终端中验证。

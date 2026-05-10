@@ -56,3 +56,38 @@ class TextbookListItem(BaseModel):
     size: int
     status: str
     progress: int = 0
+
+
+# ── Knowledge Graph Models ──
+
+class GraphNode(BaseModel):
+    id: str
+    name: str
+    definition: str
+    category: str
+    chapter: str
+    page: Optional[int] = None
+    textbook: str
+    textbook_color: str
+    frequency: int = 1
+
+
+class GraphEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    relation_type: str
+    relation_color: str
+    description: str
+
+
+class GraphStats(BaseModel):
+    totalNodes: int
+    totalEdges: int
+    bookCount: int
+
+
+class GraphData(BaseModel):
+    nodes: List[GraphNode]
+    edges: List[GraphEdge]
+    stats: GraphStats
