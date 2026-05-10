@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+node_modules/
+dist/
+data/uploads/
+data/parsed/
+*.pdf
+.venv/
+venv/
+*.egg-info/
+textbooks/
