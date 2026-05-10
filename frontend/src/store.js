@@ -1,9 +1,4 @@
 import { create } from 'zustand';
-import {
-  generateMockGraphData,
-  generateMockIntegrations,
-  generateMockDialogHistory,
-} from './utils/mockData';
 
 export const useStore = create((set, get) => ({
   // ── Textbooks (real API) ──
@@ -12,7 +7,7 @@ export const useStore = create((set, get) => ({
   uploading: false,
   parsedData: null,
   parsedLoading: false,
-  progressMap: {},          // { [textbookId]: number(0-100) }
+  progressMap: {},
 
   setTextbooks: (textbooks) => set({ textbooks }),
   setSelectedBook: (id) => set({ selectedBookId: id }),
@@ -26,8 +21,8 @@ export const useStore = create((set, get) => ({
     return { progressMap: next };
   }),
 
-  // ── Graph (demo until backend graph endpoint exists) ──
-  graphData: generateMockGraphData(3),
+  // ── Graph ──
+  graphData: null,
   selectedNode: null,
   graphSearch: '',
   showLabels: true,
@@ -37,29 +32,17 @@ export const useStore = create((set, get) => ({
   setGraphSearch: (q) => set({ graphSearch: q }),
   setShowLabels: (v) => set({ showLabels: v }),
 
-  // ── Integration (demo) ──
-  integrations: generateMockIntegrations(),
+  // ── Integration ──
+  integrations: [],
   integrationRunning: false,
-  integrationStats: {
-    originalChars: 5820000,
-    integratedChars: 1650000,
-    compressionRatio: 28.4,
-    mergeCount: 342,
-    keepCount: 267,
-    removeCount: 96,
-    totalDecisions: 705,
-    nodesBefore: 2847,
-    nodesAfter: 1203,
-    edgesBefore: 4562,
-    edgesAfter: 2891,
-  },
+  integrationStats: null,
 
   setIntegrations: (data) => set({ integrations: data }),
   setIntegrationRunning: (v) => set({ integrationRunning: v }),
   setIntegrationStats: (stats) => set({ integrationStats: stats }),
 
-  // ── RAG (demo) ──
-  ragStatus: { indexed: true, textbookCount: 7, chunkCount: 2847 },
+  // ── RAG ──
+  ragStatus: null,
   ragQuerying: false,
   ragResult: null,
   ragHistory: [],
@@ -69,8 +52,8 @@ export const useStore = create((set, get) => ({
   setRagResult: (result) => set({ ragResult: result }),
   addRagHistory: (entry) => set((s) => ({ ragHistory: [...s.ragHistory, entry] })),
 
-  // ── Dialogue (demo) ──
-  messages: generateMockDialogHistory(),
+  // ── Dialogue ──
+  messages: [],
   messageSending: false,
 
   setMessages: (msgs) => set({ messages: msgs }),

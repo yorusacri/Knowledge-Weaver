@@ -1,11 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Search, BookOpen, ChevronDown, ChevronRight, Zap,
-  Database, Send, Loader2, FileText, BarChart3,
+  Database, Send, Loader2, FileText, BarChart3, BookX,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { buildRAGIndex, queryRAG, getRAGStatus } from '../api';
-import { generateMockRAGResult } from '../utils/mockData';
 
 export default function RAGTab() {
   const {
@@ -13,22 +12,27 @@ export default function RAGTab() {
     ragQuerying, setRagQuerying,
     ragResult, setRagResult,
     ragHistory, addRagHistory,
+    textbooks,
   } = useStore();
 
   const [question, setQuestion] = useState('');
   const [expandedChunk, setExpandedChunk] = useState(null);
   const [building, setBuilding] = useState(false);
+  const [indexError, setIndexError] = useState(null);
+  const [queryError, setQueryError] = useState(null);
   const resultRef = useRef(null);
+
+  const hasBooks = textbooks.length > 0;
 
   const handleBuildIndex = async () => {
     setBuilding(true);
+    setIndexError(null);
     try {
       await buildRAGIndex();
       const status = await getRAGStatus();
       setRagStatus(status);
-    } catch {
-      // Demo mode
-      setRagStatus({ indexed: true, textbookCount: 7, chunkCount: 2847 });
+    } catch (err) {
+      setIndexError(err.message || '索引构建失败');
     }
     setBuilding(false);
   };
@@ -38,16 +42,14 @@ export default function RAGTab() {
     const q = question.trim();
     setQuestion('');
     setRagQuerying(true);
+    setQueryError(null);
 
     try {
       const result = await queryRAG(q);
       setRagResult(result);
       addRagHistory({ question: q, result, timestamp: new Date().toISOString() });
-    } catch {
-      // Demo mode
-      const result = generateMockRAGResult();
-      setRagResult(result);
-      addRagHistory({ question: q, result, timestamp: new Date().toISOString() });
+    } catch (err) {
+      setQueryError(err.message || '查询失败，请检查后端服务');
     }
     setRagQuerying(false);
   };
@@ -89,27 +91,49 @@ export default function RAGTab() {
             )}
           </span>
         </div>
-        <button
-          onClick={handleBuildIndex}
-          disabled={building}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '4px 10px',
-            background: building ? 'var(--bg-tertiary)' : 'var(--accent-glow)',
-            color: building ? 'var(--text-muted)' : 'var(--accent)',
-            border: '1px solid var(--border-accent)',
-            borderRadius: 'var(--radius-sm)',
-            cursor: building ? 'wait' : 'pointer',
-            fontSize: 11,
-            fontWeight: 500,
-          }}
-        >
-          {building ? <Loader2 size={12} className="animate-pulse" /> : <Zap size={12} />}
-          {building ? '构建中...' : '构建索引'}
-        </button>
+        {hasBooks && (
+          <button
+            onClick={handleBuildIndex}
+            disabled={building}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '4px 10px',
+              background: building ? 'var(--bg-tertiary)' : 'var(--accent-glow)',
+              color: building ? 'var(--text-muted)' : 'var(--accent)',
+              border: '1px solid var(--border-accent)',
+              borderRadius: 'var(--radius-sm)',
+              cursor: building ? 'wait' : 'pointer',
+              fontSize: 11,
+              fontWeight: 500,
+            }}
+          >
+            {building ? <Loader2 size={12} className="animate-pulse" /> : <Zap size={12} />}
+            {building ? '构建中...' : '构建索引'}
+          </button>
+        )}
       </div>
+
+      {/* Empty state: no books */}
+      {!hasBooks && (
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          padding: 32,
+          color: 'var(--text-muted)',
+        }}>
+          <BookX size={32} strokeWidth={1} style={{ opacity: 0.25 }} />
+          <div style={{ fontSize: 13, fontWeight: 500 }}>暂无教材</div>
+          <div style={{ fontSize: 12, textAlign: 'center', lineHeight: 1.6 }}>
+            请先在左侧上传并解析教材<br />才能构建 RAG 索引
+          </div>
+        </div>
+      )}
 
       {/* Result area */}
       <div ref={resultRef} style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
@@ -330,12 +354,26 @@ export default function RAGTab() {
         )}
       </div>
 
-      {/* Input bar */}
-      <div style={{
-        padding: '10px 16px',
-        borderTop: '1px solid var(--border)',
-        background: 'var(--bg-secondary)',
-      }}>
+      {/* Error messages */}
+      {(indexError || queryError) && (
+        <div style={{
+          padding: '8px 16px',
+          background: 'var(--red-dim)',
+          borderTop: '1px solid var(--border)',
+          fontSize: 12,
+          color: 'var(--red)',
+        }}>
+          {indexError || queryError}
+        </div>
+      )}
+
+      {/* Input bar — only show when books available */}
+      {hasBooks && (
+        <div style={{
+          padding: '10px 16px',
+          borderTop: '1px solid var(--border)',
+          background: 'var(--bg-secondary)',
+        }}>
         <div style={{
           display: 'flex',
           gap: 8,
@@ -379,6 +417,7 @@ export default function RAGTab() {
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 }

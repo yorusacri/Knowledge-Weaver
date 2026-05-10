@@ -12,6 +12,7 @@ logging.basicConfig(
 
 from .routes.textbooks import router as textbooks_router
 from .routes.graph import router as graph_router
+from .routes.integration import router as integration_router
 from .storage import list_uploaded_textbooks, save_status
 from .models import TextbookStatus
 
@@ -42,6 +43,7 @@ app.add_middleware(
 
 app.include_router(textbooks_router)
 app.include_router(graph_router)
+app.include_router(integration_router)
 
 
 @app.get("/api/health")

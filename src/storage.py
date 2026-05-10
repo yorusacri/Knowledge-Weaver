@@ -157,6 +157,22 @@ def delete_graph(textbook_id: str) -> None:
         f.unlink()
 
 
+def save_integrated_graph(graph_data: GraphData) -> Path:
+    dest = GRAPH_DIR / "_integrated.json"
+    dest.write_text(graph_data.model_dump_json(indent=2), encoding="utf-8")
+    return dest
+
+
+def load_integrated_graph() -> Optional[GraphData]:
+    path = GRAPH_DIR / "_integrated.json"
+    if not path.exists():
+        return None
+    try:
+        return GraphData.model_validate_json(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
 def save_graph_build_status(textbook_id: str, status: str, progress: int = 0, error: str = None) -> None:
     path = GRAPH_DIR / f"{textbook_id}.build_status.json"
     data = {"textbook_id": textbook_id, "status": status, "progress": progress}

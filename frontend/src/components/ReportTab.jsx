@@ -1,33 +1,21 @@
 import { useState } from 'react';
 import {
   FileText, Download, Copy, Check, BookOpen, BarChart3,
-  Network, AlertTriangle, TrendingDown,
+  Network, AlertTriangle, TrendingDown, FileSearch,
 } from 'lucide-react';
 import { useStore } from '../store';
-import { generateMockReport } from '../utils/mockData';
 import { formatNumber } from '../utils/helpers';
 import ReactMarkdown from 'react-markdown';
 
 export default function ReportTab() {
-  const { integrationStats, textbooks } = useStore();
+  const { integrationStats, integrations, textbooks } = useStore();
   const [copied, setCopied] = useState(false);
-  const [viewMode, setViewMode] = useState('structured'); // 'structured' | 'markdown'
+  const [viewMode, setViewMode] = useState('structured');
 
-  const stats = integrationStats || {
-    originalChars: 5820000,
-    integratedChars: 1650000,
-    compressionRatio: 28.4,
-    mergeCount: 342,
-    keepCount: 267,
-    removeCount: 96,
-    totalDecisions: 705,
-    nodesBefore: 2847,
-    nodesAfter: 1203,
-    edgesBefore: 4562,
-    edgesAfter: 2891,
-  };
+  const hasStats = integrationStats !== null;
+  const hasIntegrations = integrations.length > 0;
 
-  const reportMd = generateMockReport();
+  const reportMd = buildReportMarkdown(integrationStats, integrations, textbooks);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(reportMd);
@@ -45,36 +33,36 @@ export default function ReportTab() {
     URL.revokeObjectURL(url);
   };
 
-  const statCards = [
+  const statCards = hasStats ? [
     {
       label: '教材数量',
-      value: `${textbooks?.length || 7} 本`,
+      value: `${integrationStats.bookCount || textbooks.length} 本`,
       sub: '原始教材',
       icon: BookOpen,
       color: 'var(--blue)',
     },
     {
       label: '压缩比',
-      value: `${stats.compressionRatio}%`,
-      sub: `${formatNumber(stats.originalChars)} → ${formatNumber(stats.integratedChars)} 字`,
+      value: `${integrationStats.compressionRatio}%`,
+      sub: `${formatNumber(integrationStats.originalChars)} → ${formatNumber(integrationStats.integratedChars)} 字`,
       icon: TrendingDown,
-      color: 'var(--green)',
+      color: integrationStats.compressionRatio <= 30 ? 'var(--green)' : 'var(--red)',
     },
     {
       label: '整合决策',
-      value: `${stats.totalDecisions} 项`,
-      sub: `合并${stats.mergeCount} · 保留${stats.keepCount} · 删除${stats.removeCount}`,
+      value: `${integrationStats.mergeCount + integrationStats.keepCount + integrationStats.removeCount} 项`,
+      sub: `合并${integrationStats.mergeCount} · 保留${integrationStats.keepCount} · 删除${integrationStats.removeCount}`,
       icon: BarChart3,
       color: 'var(--accent)',
     },
     {
       label: '节点变化',
-      value: `${stats.nodesBefore} → ${stats.nodesAfter}`,
-      sub: `减少 ${Math.round((1 - stats.nodesAfter / stats.nodesBefore) * 100)}%`,
+      value: `${integrationStats.nodesBefore} → ${integrationStats.nodesAfter}`,
+      sub: `减少 ${Math.round((1 - integrationStats.nodesAfter / integrationStats.nodesBefore) * 100)}%`,
       icon: Network,
       color: 'var(--purple)',
     },
-  ];
+  ] : [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -146,7 +134,26 @@ export default function ReportTab() {
 
       {/* Content */}
       <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
-        {viewMode === 'structured' ? (
+        {/* Empty state */}
+        {!hasStats && (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            padding: '60px 0',
+            color: 'var(--text-muted)',
+          }}>
+            <FileSearch size={32} strokeWidth={1} style={{ opacity: 0.25 }} />
+            <div style={{ fontSize: 13, fontWeight: 500 }}>暂无整合报告</div>
+            <div style={{ fontSize: 12, textAlign: 'center', lineHeight: 1.6 }}>
+              请先执行跨教材整合<br />系统将自动生成整合报告
+            </div>
+          </div>
+        )}
+
+        {hasStats && viewMode === 'structured' && (
           <div>
             {/* Stat cards */}
             <div style={{
@@ -222,10 +229,10 @@ export default function ReportTab() {
                 <span style={{
                   fontSize: 12,
                   fontFamily: 'var(--font-mono)',
-                  color: stats.compressionRatio <= 30 ? 'var(--green)' : 'var(--red)',
+                  color: integrationStats.compressionRatio <= 30 ? 'var(--green)' : 'var(--red)',
                   fontWeight: 600,
                 }}>
-                  {stats.compressionRatio}% / 30% 目标
+                  {integrationStats.compressionRatio}% / 30% 目标
                 </span>
               </div>
               <div style={{
@@ -246,16 +253,16 @@ export default function ReportTab() {
                   zIndex: 1,
                 }} />
                 <div style={{
-                  width: `${Math.min(100, (stats.compressionRatio / 30) * 100)}%`,
+                  width: `${Math.min(100, (integrationStats.compressionRatio / 30) * 100)}%`,
                   height: '100%',
-                  background: stats.compressionRatio <= 30
+                  background: integrationStats.compressionRatio <= 30
                     ? 'linear-gradient(90deg, var(--green), var(--green) 80%, var(--accent))'
                     : 'var(--red)',
                   borderRadius: 4,
                   transition: 'width 0.8s ease',
                 }} />
               </div>
-              {stats.compressionRatio <= 30 && (
+              {integrationStats.compressionRatio <= 30 && (
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -353,7 +360,9 @@ export default function ReportTab() {
               </div>
             </div>
           </div>
-        ) : (
+        )}
+
+        {hasStats && viewMode === 'markdown' && (
           <div className="md-content" style={{ fontSize: 13 }}>
             <ReactMarkdown>{reportMd}</ReactMarkdown>
           </div>
@@ -361,4 +370,42 @@ export default function ReportTab() {
       </div>
     </div>
   );
+}
+
+function buildReportMarkdown(stats, decisions, textbooks) {
+  if (!stats) {
+    return '# 整合报告\n\n尚未执行整合，请先完成跨教材知识图谱整合。';
+  }
+
+  const total = (stats.mergeCount || 0) + (stats.keepCount || 0) + (stats.removeCount || 0);
+
+  return `# 学科知识整合报告
+
+## 一、整合概览
+
+| 指标 | 数据 |
+|------|------|
+| 原始教材数量 | ${stats.bookCount || textbooks.length} 本 |
+| 原始总字数 | ${stats.originalChars.toLocaleString()} 字 |
+| 整合后字数 | ${stats.integratedChars.toLocaleString()} 字 |
+| 压缩比 | ${stats.compressionRatio}% |
+
+## 二、整合决策摘要
+
+| 决策类型 | 数量 | 占比 |
+|----------|------|------|
+| 合并（merge） | ${stats.mergeCount} 项 | ${Math.round(stats.mergeCount / total * 100)}% |
+| 保留（keep） | ${stats.keepCount} 项 | ${Math.round(stats.keepCount / total * 100)}% |
+| 删除（remove） | ${stats.removeCount} 项 | ${Math.round(stats.removeCount / total * 100)}% |
+
+## 三、知识图谱统计
+
+| 指标 | 整合前 | 整合后 | 变化 |
+|------|--------|--------|------|
+| 知识节点总数 | ${stats.nodesBefore} | ${stats.nodesAfter} | -${Math.round((1 - stats.nodesAfter / stats.nodesBefore) * 100)}% |
+| 知识关系总数 | ${stats.edgesBefore} | ${stats.edgesAfter} | -${Math.round((1 - stats.edgesAfter / stats.edgesBefore) * 100)}% |
+
+---
+*报告由 MediGraph 系统自动生成*
+`;
 }

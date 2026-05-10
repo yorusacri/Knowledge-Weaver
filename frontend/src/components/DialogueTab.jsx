@@ -3,7 +3,7 @@ import {
   Send, Loader2, Bot, User, Trash2, MessageCircle,
 } from 'lucide-react';
 import { useStore } from '../store';
-import { sendMessage, getDialogHistory, clearDialogHistory } from '../api';
+import { sendMessage, clearDialogHistory } from '../api';
 
 export default function DialogueTab() {
   const {
@@ -39,15 +39,13 @@ export default function DialogueTab() {
       const response = await sendMessage(content);
       addMessage({
         role: 'assistant',
-        content: response.content || response.message || response,
+        content: response.content || response.message || JSON.stringify(response),
         timestamp: new Date().toISOString(),
       });
-    } catch {
-      // Demo: simulate response
-      await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1500));
+    } catch (err) {
       addMessage({
         role: 'assistant',
-        content: generateDemoResponse(content),
+        content: `抱歉，发送失败：${err.message || '后端服务不可用'}`,
         timestamp: new Date().toISOString(),
       });
     }
@@ -116,6 +114,25 @@ export default function DialogueTab() {
           gap: 12,
         }}
       >
+        {messages.length === 0 && (
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            color: 'var(--text-muted)',
+            padding: '40px 0',
+          }}>
+            <Bot size={32} strokeWidth={1} style={{ opacity: 0.25 }} />
+            <div style={{ fontSize: 13, fontWeight: 500 }}>暂无对话记录</div>
+            <div style={{ fontSize: 12, textAlign: 'center', lineHeight: 1.6 }}>
+              上传教材并执行整合后<br />可与系统进行多轮对话
+            </div>
+          </div>
+        )}
+
         {messages.map((msg, i) => (
           <div
             key={i}

@@ -1,14 +1,11 @@
 import { useState } from 'react';
 import {
   GitMerge, ShieldCheck, Trash2, Play, ChevronDown, ChevronUp,
-  BarChart3, ArrowRight, Zap, PieChart,
+  BarChart3, Zap, BookOpen,
 } from 'lucide-react';
-import { ACTION_CONFIG, formatNumber, formatPercent } from '../utils/helpers';
+import { ACTION_CONFIG, formatNumber } from '../utils/helpers';
 import { useStore } from '../store';
-import { runIntegration, getIntegrations, getIntegrationStats } from '../api';
-
-const DEMO_INTEGRATIONS = useStore.getState().integrations;
-const DEMO_STATS = useStore.getState().integrationStats;
+import { runIntegration, getIntegrationStats } from '../api';
 
 const actionIcons = {
   merge: GitMerge,
@@ -21,20 +18,26 @@ export default function IntegrationTab() {
     integrations, setIntegrations,
     integrationRunning, setIntegrationRunning,
     integrationStats, setIntegrationStats,
+    textbooks,
   } = useStore();
 
   const [expandedId, setExpandedId] = useState(null);
-  const [filter, setFilter] = useState('all'); // all | merge | keep | remove
+  const [filter, setFilter] = useState('all');
+  const [runError, setRunError] = useState(null);
+
+  const hasBooks = textbooks.length > 0;
+  const hasIntegrations = integrations.length > 0;
 
   const handleRun = async () => {
     setIntegrationRunning(true);
+    setRunError(null);
     try {
       const result = await runIntegration();
       setIntegrations(result.decisions || result);
       const stats = await getIntegrationStats();
       setIntegrationStats(stats);
-    } catch {
-      // Demo mode — keep existing data
+    } catch (err) {
+      setRunError(err.message || '整合失败，请检查后端服务');
     }
     setIntegrationRunning(false);
   };
@@ -59,17 +62,18 @@ export default function IntegrationTab() {
       }}>
         <button
           onClick={handleRun}
-          disabled={integrationRunning}
+          disabled={integrationRunning || !hasBooks}
+          title={!hasBooks ? '请先上传并解析教材' : ''}
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: 6,
             padding: '7px 14px',
-            background: integrationRunning ? 'var(--bg-tertiary)' : 'var(--accent)',
-            color: integrationRunning ? 'var(--text-muted)' : 'var(--text-inverse)',
+            background: (!hasBooks || integrationRunning) ? 'var(--bg-tertiary)' : 'var(--accent)',
+            color: (!hasBooks || integrationRunning) ? 'var(--text-muted)' : 'var(--text-inverse)',
             border: 'none',
             borderRadius: 'var(--radius-sm)',
-            cursor: integrationRunning ? 'wait' : 'pointer',
+            cursor: (!hasBooks || integrationRunning) ? 'not-allowed' : 'pointer',
             fontSize: 12,
             fontWeight: 600,
             transition: 'var(--transition-normal)',
@@ -82,10 +86,56 @@ export default function IntegrationTab() {
           )}
           {integrationRunning ? '整合中...' : '执行整合'}
         </button>
+        {runError && (
+          <span style={{ fontSize: 11, color: 'var(--red)', marginLeft: 4 }}>
+            {runError}
+          </span>
+        )}
       </div>
 
+      {/* Empty state: no textbooks */}
+      {!hasBooks && (
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          padding: 32,
+          color: 'var(--text-muted)',
+        }}>
+          <BookOpen size={32} strokeWidth={1} style={{ opacity: 0.25 }} />
+          <div style={{ fontSize: 13, fontWeight: 500 }}>暂无教材</div>
+          <div style={{ fontSize: 12, textAlign: 'center', lineHeight: 1.6 }}>
+            请在左侧上传教材并等待解析完成<br />后再执行跨教材整合
+          </div>
+        </div>
+      )}
+
+      {/* Empty state: has books but no integration run yet */}
+      {hasBooks && !hasIntegrations && !integrationRunning && (
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          padding: 32,
+          color: 'var(--text-muted)',
+        }}>
+          <GitMerge size={32} strokeWidth={1} style={{ opacity: 0.25 }} />
+          <div style={{ fontSize: 13, fontWeight: 500 }}>尚未执行整合</div>
+          <div style={{ fontSize: 12, textAlign: 'center', lineHeight: 1.6 }}>
+            点击「执行整合」开始跨教材知识图谱整合<br />
+            系统将识别重复知识点并生成整合决策
+          </div>
+        </div>
+      )}
+
       {/* Stats bar */}
-      {integrationStats && (
+      {integrationStats && hasIntegrations && (
         <div style={{
           padding: '10px 16px',
           borderBottom: '1px solid var(--border)',
@@ -123,6 +173,7 @@ export default function IntegrationTab() {
       )}
 
       {/* Filter pills */}
+      {hasIntegrations && (
       <div style={{
         padding: '8px 16px',
         borderBottom: '1px solid var(--border)',
@@ -158,6 +209,7 @@ export default function IntegrationTab() {
           </button>
         ))}
       </div>
+      )}
 
       {/* Decision list */}
       <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
