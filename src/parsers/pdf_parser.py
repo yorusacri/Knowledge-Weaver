@@ -1,5 +1,6 @@
 import re
 import json
+import time
 import fitz
 from pathlib import Path
 from typing import List, Optional
@@ -132,6 +133,8 @@ def _find_chapter_starts(doc, toc_titles: List[str]) -> List[tuple]:
                 if not already_found:
                     chapter_starts.append((i + 1, toc_ch_nums[norm]))
 
+        time.sleep(0)
+
     return chapter_starts
 
 
@@ -153,10 +156,16 @@ def _llm_identify_chapters(pages_data: list, filename: str) -> Optional[List[tup
     """Use LLM to identify chapter boundaries when rule-based methods fail.
 
     Sends only page summaries (page# + first 2 lines) to minimize token usage.
+    Requires DEEPSEEK_API_KEY environment variable.
     """
+    import os
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not api_key:
+        return None
+
     try:
-        import anthropic
-        client = anthropic.Anthropic()
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
     except Exception:
         return None
 
@@ -183,12 +192,12 @@ Example: [{{"page":25,"title":"第一章 组织学绪论"}},{{"page":40,"title":
 If no chapters found, return: []"""
 
     try:
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+        response = client.chat.completions.create(
+            model="deepseek-chat",
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
-        text = response.content[0].text.strip()
+        text = response.choices[0].message.content.strip()
         json_match = re.search(r"\[.*\]", text, re.DOTALL)
         if not json_match:
             return None
@@ -198,7 +207,7 @@ If no chapters found, return: []"""
         return None
 
 
-def parse_pdf(file_path: str, textbook_id: str, filename: str) -> ParsedTextbook:
+def parse_pdf(file_path: str, textbook_id: str, filename: str, on_progress=None) -> ParsedTextbook:
     doc = fitz.open(file_path)
     total_pages = len(doc)
 
@@ -207,6 +216,12 @@ def parse_pdf(file_path: str, textbook_id: str, filename: str) -> ParsedTextbook
         page = doc[i]
         lines = _extract_page_lines(page)
         pages_data.append({"page": i + 1, "lines": lines})
+        if on_progress and (i + 1) % 10 == 0:
+            on_progress(i + 1, total_pages)
+        # Yield the GIL every page so the asyncio event loop can process
+        # other requests (health checks, status queries, etc.) without
+        # being starved by this CPU-bound parsing thread.
+        time.sleep(0)
 
     # Step 1: Rule-based TOC extraction
     toc_titles = _extract_toc_chapters(doc)

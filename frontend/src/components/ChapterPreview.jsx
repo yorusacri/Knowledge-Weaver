@@ -1,7 +1,31 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { getChapterContent } from '../api';
 
 export default function ChapterPreview({ data }) {
   const [expanded, setExpanded] = useState(null);
+  const [contentCache, setContentCache] = useState({});
+  const [loading, setLoading] = useState(null);
+
+  const handleToggle = useCallback(async (chapterId) => {
+    if (expanded === chapterId) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded(chapterId);
+
+    // Already cached
+    if (contentCache[chapterId]) return;
+
+    setLoading(chapterId);
+    try {
+      const res = await getChapterContent(data.textbook_id, chapterId);
+      setContentCache((prev) => ({ ...prev, [chapterId]: res.content }));
+    } catch {
+      setContentCache((prev) => ({ ...prev, [chapterId]: '加载失败' }));
+    } finally {
+      setLoading(null);
+    }
+  }, [expanded, contentCache, data?.textbook_id]);
 
   if (!data) {
     return (
@@ -23,7 +47,7 @@ export default function ChapterPreview({ data }) {
         {data.chapters?.map((ch) => (
           <div
             key={ch.chapter_id}
-            onClick={() => setExpanded(expanded === ch.chapter_id ? null : ch.chapter_id)}
+            onClick={() => handleToggle(ch.chapter_id)}
             style={{
               border: '1px solid #e8e8e8',
               borderRadius: 6,
@@ -40,8 +64,10 @@ export default function ChapterPreview({ data }) {
             </div>
             {expanded === ch.chapter_id && (
               <div style={{ padding: 12, fontSize: 13, lineHeight: 1.8, maxHeight: 300, overflow: 'auto' }}>
-                {ch.content?.slice(0, 2000)}
-                {ch.content?.length > 2000 && '...'}
+                {loading === ch.chapter_id
+                  ? '加载中...'
+                  : (contentCache[ch.chapter_id]?.slice(0, 2000) || '无内容')}
+                {contentCache[ch.chapter_id]?.length > 2000 && '...'}
               </div>
             )}
           </div>

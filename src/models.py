@@ -55,3 +55,4 @@ class TextbookListItem(BaseModel):
     file_type: str
     size: int
     status: str
+    progress: int = 0

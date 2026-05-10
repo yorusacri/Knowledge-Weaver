@@ -59,7 +59,7 @@ def _split_paragraphs(paragraphs: list) -> List[dict]:
     }]
 
 
-def parse_docx(file_path: str, textbook_id: str, filename: str) -> ParsedTextbook:
+def parse_docx(file_path: str, textbook_id: str, filename: str, on_progress=None) -> ParsedTextbook:
     doc = Document(file_path)
     paragraphs = []
     for para in doc.paragraphs:

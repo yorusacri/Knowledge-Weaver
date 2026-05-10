@@ -69,7 +69,7 @@ def _split_into_chapters(text: str) -> List[dict]:
     }]
 
 
-def parse_txt(file_path: str, textbook_id: str, filename: str) -> ParsedTextbook:
+def parse_txt(file_path: str, textbook_id: str, filename: str, on_progress=None) -> ParsedTextbook:
     text = _read_text(file_path)
     chapters = _split_into_chapters(text)
     title = Path(filename).stem

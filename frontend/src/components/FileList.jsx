@@ -5,7 +5,7 @@ const STATUS_MAP = {
   failed: { text: '失败', color: '#ff4d4f' },
 };
 
-export default function FileList({ files, onSelect, onDelete, selectedId }) {
+export default function FileList({ files, onSelect, onDelete, onReparse, selectedId }) {
   if (!files.length) {
     return <p style={{ color: '#999', padding: 16 }}>暂无已上传的教材</p>;
   }
@@ -15,6 +15,7 @@ export default function FileList({ files, onSelect, onDelete, selectedId }) {
       {files.map((f) => {
         const st = STATUS_MAP[f.status] || { text: f.status, color: '#999' };
         const isSelected = f.textbook_id === selectedId;
+        const canReparse = f.status !== 'completed' && f.status !== 'parsing';
         return (
           <div
             key={f.textbook_id}
@@ -29,21 +30,11 @@ export default function FileList({ files, onSelect, onDelete, selectedId }) {
             }}
           >
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(f.textbook_id);
-              }}
+              onClick={(e) => { e.stopPropagation(); onDelete(f.textbook_id); }}
               style={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                border: 'none',
-                background: 'none',
-                cursor: 'pointer',
-                fontSize: 16,
-                color: '#bbb',
-                padding: '0 4px',
-                lineHeight: 1,
+                position: 'absolute', top: 8, right: 8,
+                border: 'none', background: 'none', cursor: 'pointer',
+                fontSize: 16, color: '#bbb', padding: '0 4px', lineHeight: 1,
               }}
               onMouseEnter={(e) => (e.target.style.color = '#ff4d4f')}
               onMouseLeave={(e) => (e.target.style.color = '#bbb')}
@@ -51,13 +42,33 @@ export default function FileList({ files, onSelect, onDelete, selectedId }) {
             >
               &times;
             </button>
-            <div style={{ fontWeight: 500, fontSize: 14, paddingRight: 24 }}>{f.filename}</div>
+
+            <div style={{ fontWeight: 500, fontSize: 14, paddingRight: 48 }}>{f.filename}</div>
             <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
               {f.file_type.toUpperCase()} &middot; {(f.size / 1024 / 1024).toFixed(1)} MB
             </div>
-            <div style={{ fontSize: 12, color: st.color, marginTop: 4 }}>
-              {st.text}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              <span style={{ fontSize: 12, color: st.color }}>
+                {st.text}{f.status === 'parsing' ? ` ${f.progress}%` : ''}
+              </span>
+              {canReparse && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onReparse(f.textbook_id); }}
+                  style={{
+                    fontSize: 11, color: '#1890ff', background: 'none',
+                    border: '1px solid #1890ff', borderRadius: 3,
+                    padding: '1px 6px', cursor: 'pointer',
+                  }}
+                >
+                  重新解析
+                </button>
+              )}
             </div>
+            {f.status === 'parsing' && (
+              <div style={{ marginTop: 6, background: '#f0f0f0', borderRadius: 3, height: 4, overflow: 'hidden' }}>
+                <div style={{ width: `${f.progress}%`, height: '100%', background: '#1890ff', transition: 'width 0.3s' }} />
+              </div>
+            )}
           </div>
         );
       })}

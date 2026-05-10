@@ -59,7 +59,7 @@ def _split_by_headings(text: str) -> List[dict]:
     }]
 
 
-def parse_markdown(file_path: str, textbook_id: str, filename: str) -> ParsedTextbook:
+def parse_markdown(file_path: str, textbook_id: str, filename: str, on_progress=None) -> ParsedTextbook:
     text = Path(file_path).read_text(encoding="utf-8")
     chapters = _split_by_headings(text)
     title = Path(filename).stem
