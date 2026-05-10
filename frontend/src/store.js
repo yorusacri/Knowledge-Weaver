@@ -58,8 +58,8 @@ export const useStore = create((set, get) => ({
   setIntegrationRunning: (v) => set({ integrationRunning: v }),
   setIntegrationStats: (stats) => set({ integrationStats: stats }),
 
-  // ── RAG (demo) ──
-  ragStatus: { indexed: true, textbookCount: 7, chunkCount: 2847 },
+  // ── RAG (real API) ──
+  ragStatus: { indexed: false, textbookCount: 0, chunkCount: 0 },
   ragQuerying: false,
   ragResult: null,
   ragHistory: [],
