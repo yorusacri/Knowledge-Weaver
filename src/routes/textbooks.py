@@ -77,6 +77,7 @@ async def upload_textbooks(files: List[UploadFile] = File(...)):
         content = await file.read()
         textbook_id = f"book_{uuid.uuid4().hex[:8]}"
         save_upload(content, textbook_id, file.filename)
+        logger.info("文件已保存: %s (%s, %.1f MB)", file.filename, textbook_id, len(content) / 1024 / 1024)
 
         uploaded.append(UploadResponseItem(
             textbook_id=textbook_id, filename=file.filename,
@@ -84,6 +85,7 @@ async def upload_textbooks(files: List[UploadFile] = File(...)):
         ))
 
         file_path = str((UPLOADS_DIR / f"{textbook_id}.{ext}").resolve())
+        logger.info("开始解析: %s [%s]", file.filename, textbook_id)
         await _start_parse(textbook_id, file_path, file.filename, ext)
         # Write status immediately so the frontend sees "parsing" on next refresh
         save_status(TextbookStatus(
@@ -103,9 +105,8 @@ async def trigger_parse(textbook_id: str):
     file_path = files[0]
     ext = file_path.suffix.lstrip(".").lower()
     original_name = _get_original_name(textbook_id) or file_path.name
+    logger.info("重新解析: %s [%s]", original_name, textbook_id)
     await _start_parse(textbook_id, str(file_path.resolve()), original_name, ext)
-    # Write status immediately so the frontend sees "parsing" on next refresh,
-    # without waiting for the child process to start.
     save_status(TextbookStatus(
         textbook_id=textbook_id, filename=original_name,
         status="parsing", progress=0,
@@ -162,6 +163,7 @@ async def get_chapter_content(textbook_id: str, chapter_id: str):
 async def remove_textbook(textbook_id: str):
     if not delete_textbook(textbook_id):
         raise HTTPException(404, "教材未找到")
+    logger.info("教材已删除: %s", textbook_id)
     return {"textbook_id": textbook_id, "status": "deleted"}
 
 

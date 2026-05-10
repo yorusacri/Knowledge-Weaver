@@ -21,11 +21,19 @@ def parse_in_process(textbook_id: str, file_path: str, filename: str, file_type:
     Each call runs in a separate OS process with its own Python interpreter,
     so the main process event loop is never blocked.
     """
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+        force=True,
+    )
+
     from src.storage import save_parsed, save_status
     from src.models import TextbookStatus
 
     parser = PARSERS.get(file_type)
     if not parser:
+        logger.error("不支持的格式: %s (%s)", file_type, textbook_id)
         save_status(TextbookStatus(
             textbook_id=textbook_id, filename=filename,
             status="failed", progress=0,
@@ -33,8 +41,12 @@ def parse_in_process(textbook_id: str, file_path: str, filename: str, file_type:
         ))
         return
     try:
+        logger.info("解析进程启动: %s [%s]", filename, textbook_id)
+
         def on_progress(current, total):
             pct = int(current / total * 100) if total > 0 else 50
+            if pct % 25 == 0 or current == total:
+                logger.info("解析进度: %s %d%% (%d/%d)", filename, pct, current, total)
             save_status(TextbookStatus(
                 textbook_id=textbook_id, filename=filename,
                 status="parsing", progress=pct,
@@ -42,6 +54,8 @@ def parse_in_process(textbook_id: str, file_path: str, filename: str, file_type:
 
         result = parser(file_path, textbook_id, filename, on_progress=on_progress)
         save_parsed(result)
+        logger.info("解析完成: %s [%s] — %d 章, %d 页, %d 字",
+                     filename, textbook_id, len(result.chapters), result.total_pages or 0, result.total_chars)
         save_status(TextbookStatus(
             textbook_id=textbook_id, filename=filename,
             status="completed", progress=100,
