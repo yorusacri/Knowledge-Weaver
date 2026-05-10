@@ -1,10 +1,283 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
 import {
   Search, BookOpen, ChevronDown, ChevronRight, Zap,
-  Database, Send, Loader2, FileText, BarChart3, BookX,
+  Database, Send, Loader2, FileText, BarChart3,
+  AlertCircle, Sparkles, Wifi, WifiOff, Atom,
+  Inbox, FileSearch,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { buildRAGIndex, queryRAG, getRAGStatus } from '../api';
+
+// Book color map for citation accents
+const BOOK_COLOR_MAP = {
+  '生理学': '#f59e0b',
+  '病理学': '#3b82f6',
+  '免疫学': '#10b981',
+  '药理学': '#8b5cf6',
+  '解剖学': '#ec4899',
+  '组织学': '#06b6d4',
+  '生物化学': '#f97316',
+};
+
+function getBookColor(textbookName) {
+  return BOOK_COLOR_MAP[textbookName] || 'var(--accent)';
+}
+
+// Skeleton loader block
+function SkeletonBlock({ width = '100%', height = 16, style = {} }) {
+  return (
+    <div
+      style={{
+        height,
+        width,
+        borderRadius: 4,
+        background: 'linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-card-hover) 50%, var(--bg-tertiary) 75%)',
+        backgroundSize: '200% 100%',
+        animation: 'shimmer 1.4s ease-in-out infinite',
+        ...style,
+      }}
+    />
+  );
+}
+
+// Mode badge component
+function ModeBadge({ isDemo }) {
+  return (
+    <div
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '3px 8px',
+        borderRadius: 20,
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: '0.03em',
+        background: isDemo ? 'var(--orange-dim)' : 'var(--green-dim)',
+        color: isDemo ? 'var(--orange)' : 'var(--green)',
+        border: `1px solid ${isDemo ? 'rgba(234, 88, 12, 0.2)' : 'rgba(5, 150, 105, 0.2)'}`,
+      }}
+    >
+      {isDemo ? <WifiOff size={10} /> : <Wifi size={10} />}
+      {isDemo ? '演示模式' : '实时API'}
+    </div>
+  );
+}
+
+// Relevance score bar
+function RelevanceBar({ score }) {
+  const pct = Math.round(score * 100);
+  const color = pct >= 90 ? 'var(--green)' : pct >= 75 ? 'var(--accent)' : 'var(--text-muted)';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 64 }}>
+      <div style={{
+        flex: 1,
+        height: 4,
+        background: 'var(--bg-tertiary)',
+        borderRadius: 2,
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          width: `${pct}%`,
+          height: '100%',
+          background: color,
+          borderRadius: 2,
+          transition: 'width 0.4s ease',
+        }} />
+      </div>
+      <span style={{
+        fontSize: 10,
+        fontFamily: 'var(--font-mono)',
+        color,
+        fontWeight: 500,
+        minWidth: 28,
+      }}>
+        {pct}%
+      </span>
+    </div>
+  );
+}
+
+// Thinking dots animation
+function ThinkingDots() {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: '8px 12px',
+      background: 'var(--accent-glow)',
+      borderRadius: 'var(--radius-sm)',
+      border: '1px solid var(--border-accent)',
+    }}>
+      <div style={{ display: 'flex', gap: 3 }}>
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: '50%',
+              background: 'var(--accent)',
+              animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite`,
+            }}
+          />
+        ))}
+      </div>
+      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        正在检索知识库...
+      </span>
+    </div>
+  );
+}
+
+// Citation card
+function CitationCard({ citation, index, sourceChunk, expanded, onToggle }) {
+  const bookColor = getBookColor(citation.textbook);
+  return (
+    <div
+      className="animate-scale-in"
+      style={{ animationDelay: `${index * 60}ms`, animationFillMode: 'both' }}
+    >
+      <div
+        onClick={onToggle}
+        style={{
+          padding: '10px 12px',
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          borderLeft: `3px solid ${bookColor}`,
+          cursor: 'pointer',
+          transition: 'var(--transition-fast)',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = bookColor;
+          e.currentTarget.style.background = 'var(--bg-card-hover)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = 'var(--border)';
+          e.currentTarget.style.borderLeftColor = bookColor;
+          e.currentTarget.style.background = 'var(--bg-card)';
+        }}
+      >
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}>
+          <FileText size={13} style={{ color: bookColor, flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              marginBottom: 2,
+            }}>
+              <span style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+              }}>
+                {citation.textbook}
+              </span>
+              <span style={{
+                fontSize: 10,
+                color: 'var(--text-muted)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}>
+                {citation.chapter}
+              </span>
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              第 {citation.page} 页
+            </div>
+          </div>
+          <div style={{ flexShrink: 0 }}>
+            <RelevanceBar score={citation.relevance_score} />
+          </div>
+          {expanded ? (
+            <ChevronDown size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          ) : (
+            <ChevronRight size={12} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          )}
+        </div>
+      </div>
+      {expanded && sourceChunk && (
+        <div
+          className="animate-fade-in"
+          style={{
+            margin: '6px 0 0 0',
+            padding: '10px 14px',
+            background: 'var(--bg-tertiary)',
+            borderRadius: 'var(--radius-sm)',
+            borderLeft: `3px solid ${bookColor}`,
+          }}
+        >
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            marginBottom: 6,
+          }}>
+            <Atom size={10} style={{ color: bookColor }} />
+            <span style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}>
+              原始文本块
+            </span>
+          </div>
+          <div style={{
+            fontSize: 12,
+            lineHeight: 1.7,
+            color: 'var(--text-secondary)',
+            fontFamily: 'var(--font-mono)',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}>
+            {sourceChunk}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Suggested question chip
+function SuggestedChip({ text, onClick }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        textAlign: 'left',
+        padding: '7px 10px',
+        background: hover ? 'var(--bg-card-hover)' : 'var(--bg-card)',
+        border: `1px solid ${hover ? 'var(--border-accent)' : 'var(--border)'}`,
+        borderRadius: 'var(--radius-sm)',
+        cursor: 'pointer',
+        fontSize: 12,
+        color: hover ? 'var(--text-primary)' : 'var(--text-secondary)',
+        lineHeight: 1.5,
+        transition: 'var(--transition-fast)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+      }}
+    >
+      <Sparkles size={11} style={{ color: 'var(--accent)', flexShrink: 0, opacity: hover ? 1 : 0.6 }} />
+      {text}
+    </button>
+  );
+}
 
 export default function RAGTab() {
   const {
@@ -12,53 +285,87 @@ export default function RAGTab() {
     ragQuerying, setRagQuerying,
     ragResult, setRagResult,
     ragHistory, addRagHistory,
-    textbooks,
   } = useStore();
 
-  const [question, setQuestion] = useState('');
+  const [userQuestion, setUserQuestion] = useState('');
+  const [displayedQuestion, setDisplayedQuestion] = useState('');
   const [expandedChunk, setExpandedChunk] = useState(null);
   const [building, setBuilding] = useState(false);
-  const [indexError, setIndexError] = useState(null);
-  const [queryError, setQueryError] = useState(null);
+  const [buildProgress, setBuildProgress] = useState(0);
+  const [error, setError] = useState(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const resultRef = useRef(null);
+  const inputRef = useRef(null);
 
-  const hasBooks = textbooks.length > 0;
+  // Auto-focus input on mount
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, []);
+
+  // Auto-scroll result area
+  useEffect(() => {
+    if (resultRef.current && ragResult) {
+      resultRef.current.scrollTop = 0;
+    }
+  }, [ragResult]);
 
   const handleBuildIndex = async () => {
     setBuilding(true);
-    setIndexError(null);
+    setBuildProgress(0);
+    setError(null);
+    setIsDemoMode(false);
+    setBuildProgress(20);
+
     try {
       await buildRAGIndex();
+      setBuildProgress(70);
       const status = await getRAGStatus();
+      setBuildProgress(100);
       setRagStatus(status);
     } catch (err) {
-      setIndexError(err.message || '索引构建失败');
+      setBuildProgress(100);
+      setError('索引构建失败，请检查后端服务');
+      console.error('RAG index build failed:', err);
     }
     setBuilding(false);
   };
 
   const handleQuery = async () => {
-    if (!question.trim() || ragQuerying) return;
-    const q = question.trim();
-    setQuestion('');
+    if (!userQuestion.trim() || ragQuerying) return;
+    const q = userQuestion.trim();
+    setDisplayedQuestion(q);
+    setUserQuestion('');
     setRagQuerying(true);
-    setQueryError(null);
+    setError(null);
+    setIsDemoMode(false);
+    setExpandedChunk(null);
 
     try {
       const result = await queryRAG(q);
       setRagResult(result);
+      setRagQuerying(false);
       addRagHistory({ question: q, result, timestamp: new Date().toISOString() });
     } catch (err) {
-      setQueryError(err.message || '查询失败，请检查后端服务');
+      setRagQuerying(false);
+      setRagResult(null);
+      setError('请求失败，请检查后端服务或索引状态');
+      console.error('RAG query failed:', err);
     }
-    setRagQuerying(false);
   };
 
-  useEffect(() => {
-    if (resultRef.current) {
-      resultRef.current.scrollTop = resultRef.current.scrollHeight;
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleQuery();
     }
-  }, [ragResult]);
+  }, [userQuestion, ragQuerying]);
+
+  const handleSuggestedClick = (q) => {
+    setUserQuestion(q);
+    if (inputRef.current) inputRef.current.focus();
+  };
 
   const suggestedQuestions = [
     '什么是炎症反应？其基本病理变化有哪些？',
@@ -77,21 +384,47 @@ export default function RAGTab() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        gap: 12,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Database size={14} style={{ color: ragStatus?.indexed ? 'var(--green)' : 'var(--text-muted)' }} />
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Database size={14} style={{
+            color: ragStatus?.indexed ? 'var(--green)' : 'var(--text-muted)',
+          }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {ragStatus?.indexed ? (
               <>
-                已索引 <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{ragStatus.textbookCount}</span> 本教材，
-                共 <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{ragStatus.chunkCount?.toLocaleString()}</span> 个知识块
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  已索引
+                  <span style={{ color: 'var(--accent)', fontWeight: 600 }}> {ragStatus.textbookCount} </span>
+                  本教材，共
+                  <span style={{ color: 'var(--accent)', fontWeight: 600 }}> {ragStatus.chunkCount?.toLocaleString()} </span>
+                  个知识块
+                </span>
               </>
             ) : (
-              '未建立索引'
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>未建立索引</span>
             )}
-          </span>
+            {ragStatus?.indexed && <ModeBadge isDemo={isDemoMode} />}
+          </div>
         </div>
-        {hasBooks && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {building && (
+            <div style={{
+              width: 100,
+              height: 4,
+              background: 'var(--bg-tertiary)',
+              borderRadius: 2,
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                width: `${buildProgress}%`,
+                height: '100%',
+                background: 'var(--accent)',
+                borderRadius: 2,
+                transition: 'width 0.3s ease',
+              }} />
+            </div>
+          )}
           <button
             onClick={handleBuildIndex}
             disabled={building}
@@ -107,139 +440,101 @@ export default function RAGTab() {
               cursor: building ? 'wait' : 'pointer',
               fontSize: 11,
               fontWeight: 500,
+              transition: 'var(--transition-fast)',
             }}
           >
-            {building ? <Loader2 size={12} className="animate-pulse" /> : <Zap size={12} />}
-            {building ? '构建中...' : '构建索引'}
+            {building ? (
+              <>
+                <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                构建中 {buildProgress}%
+              </>
+            ) : (
+              <>
+                <Zap size={12} />
+                构建索引
+              </>
+            )}
           </button>
-        )}
+        </div>
       </div>
 
-      {/* Empty state: no books */}
-      {!hasBooks && (
+      {/* Error banner */}
+      {error && (
         <div style={{
-          flex: 1,
+          padding: '8px 16px',
+          background: 'var(--red-dim)',
+          borderBottom: '1px solid rgba(220, 38, 38, 0.15)',
           display: 'flex',
-          flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'center',
           gap: 8,
-          padding: 32,
-          color: 'var(--text-muted)',
+          fontSize: 12,
+          color: 'var(--red)',
         }}>
-          <BookX size={32} strokeWidth={1} style={{ opacity: 0.25 }} />
-          <div style={{ fontSize: 13, fontWeight: 500 }}>暂无教材</div>
-          <div style={{ fontSize: 12, textAlign: 'center', lineHeight: 1.6 }}>
-            请先在左侧上传并解析教材<br />才能构建 RAG 索引
-          </div>
+          <AlertCircle size={13} />
+          {error}
         </div>
       )}
 
       {/* Result area */}
       <div ref={resultRef} style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
-        {!ragResult && !ragQuerying && (
+        {/* No textbooks uploaded state */}
+        {(!ragStatus?.textbookCount || ragStatus.textbookCount === 0) && !ragQuerying && (
+          <div style={{
+            textAlign: 'center',
+            padding: '40px 20px',
+            color: 'var(--text-muted)',
+          }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 60,
+              height: 60,
+              borderRadius: '50%',
+              background: 'var(--bg-tertiary)',
+              marginBottom: 14,
+            }}>
+              <FileSearch size={26} strokeWidth={1.2} style={{ color: 'var(--text-muted)', opacity: 0.6 }} />
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 6 }}>
+              还没有上传教材
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+              请先在左侧上传并解析教材<br />然后构建索引后再进行问答
+            </div>
+          </div>
+        )}
+
+        {/* Empty state — has textbooks but no result yet */}
+        {ragStatus?.textbookCount > 0 && !ragResult && !ragQuerying && (
           <div>
             <div style={{
               textAlign: 'center',
-              padding: '24px 0 16px',
+              padding: '28px 0 20px',
               color: 'var(--text-muted)',
             }}>
-              <Search size={32} strokeWidth={1} style={{ marginBottom: 8, opacity: 0.3 }} />
-              <div style={{ fontSize: 13 }}>输入问题，基于教材知识库精准回答</div>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 56,
+                height: 56,
+                borderRadius: '50%',
+                background: 'var(--accent-glow)',
+                marginBottom: 12,
+              }}>
+                <Search size={24} strokeWidth={1.2} style={{ color: 'var(--accent)', opacity: 0.7 }} />
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 4 }}>
+                基于教材知识库智能问答
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                输入问题，获取带引用的精准回答
+              </div>
             </div>
 
             {/* Suggested questions */}
-            <div style={{ marginTop: 8 }}>
-              <div style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: 'var(--text-muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                marginBottom: 8,
-              }}>
-                示例问题
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {suggestedQuestions.map((q, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setQuestion(q)}
-                    style={{
-                      textAlign: 'left',
-                      padding: '8px 10px',
-                      background: 'var(--bg-card)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--radius-sm)',
-                      cursor: 'pointer',
-                      fontSize: 12,
-                      color: 'var(--text-secondary)',
-                      lineHeight: 1.5,
-                      transition: 'var(--transition-fast)',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--border-accent)';
-                      e.currentTarget.style.color = 'var(--text-primary)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--border)';
-                      e.currentTarget.style.color = 'var(--text-secondary)';
-                    }}
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {ragQuerying && (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 12,
-            padding: 40,
-            color: 'var(--text-muted)',
-          }}>
-            <Loader2 size={28} className="animate-pulse" style={{ color: 'var(--accent)' }} />
-            <div style={{ fontSize: 13 }}>正在检索知识库并生成回答...</div>
-          </div>
-        )}
-
-        {ragResult && (
-          <div className="animate-fade-in">
-            {/* Answer */}
-            <div style={{
-              background: 'var(--bg-card)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
-              padding: 14,
-              marginBottom: 12,
-            }}>
-              <div style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: 'var(--text-muted)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                marginBottom: 8,
-              }}>
-                回答
-              </div>
-              <div style={{
-                fontSize: 13,
-                lineHeight: 1.8,
-                color: 'var(--text-secondary)',
-                whiteSpace: 'pre-wrap',
-              }}>
-                {ragResult.answer}
-              </div>
-            </div>
-
-            {/* Citations */}
-            <div style={{ marginBottom: 12 }}>
+            <div style={{ marginTop: 4 }}>
               <div style={{
                 fontSize: 11,
                 fontWeight: 600,
@@ -251,66 +546,183 @@ export default function RAGTab() {
                 alignItems: 'center',
                 gap: 4,
               }}>
-                <BookOpen size={12} />
-                引用来源 ({ragResult.citations?.length || 0})
+                <Sparkles size={11} />
+                示例问题
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {ragResult.citations?.map((cite, i) => (
-                  <div key={i}>
-                    <div
-                      onClick={() => setExpandedChunk(expandedChunk === i ? null : i)}
-                      style={{
-                        padding: '8px 10px',
-                        background: 'var(--bg-card)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius-sm)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        transition: 'var(--transition-fast)',
-                      }}
-                    >
-                      <FileText size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                      <div style={{ flex: 1 }}>
-                        <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)' }}>
-                          {cite.textbook}
-                        </span>
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>
-                          {cite.chapter} · 第 {cite.page} 页
-                        </span>
-                      </div>
-                      <div style={{
-                        fontSize: 10,
-                        padding: '2px 6px',
-                        borderRadius: 3,
-                        background: cite.relevance_score > 0.9 ? 'var(--green-dim)' : 'var(--accent-glow)',
-                        color: cite.relevance_score > 0.9 ? 'var(--green)' : 'var(--accent)',
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: 500,
-                      }}>
-                        {Math.round(cite.relevance_score * 100)}%
-                      </div>
-                      {expandedChunk === i ? <ChevronDown size={12} style={{ color: 'var(--text-muted)' }} /> : <ChevronRight size={12} style={{ color: 'var(--text-muted)' }} />}
-                    </div>
-                    {expandedChunk === i && ragResult.source_chunks?.[i] && (
-                      <div style={{
-                        margin: '4px 0 0',
-                        padding: '10px 12px',
-                        background: 'var(--bg-tertiary)',
-                        borderRadius: 'var(--radius-sm)',
-                        fontSize: 12,
-                        lineHeight: 1.7,
-                        color: 'var(--text-muted)',
-                        borderLeft: '2px solid var(--accent)',
-                      }}>
-                        {ragResult.source_chunks[i]}
-                      </div>
-                    )}
-                  </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {suggestedQuestions.map((q, i) => (
+                  <SuggestedChip
+                    key={i}
+                    text={q}
+                    onClick={() => handleSuggestedClick(q)}
+                  />
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Loading state */}
+        {ragQuerying && (
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 16,
+            padding: 20,
+            animation: 'fadeIn 0.2s ease',
+          }}>
+            {/* User question */}
+            {displayedQuestion && (
+              <div style={{
+                padding: '8px 12px',
+                background: 'var(--bg-tertiary)',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: 12,
+                color: 'var(--text-muted)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+              }}>
+                <Search size={13} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 1 }} />
+                <span style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>{displayedQuestion}</span>
+              </div>
+            )}
+
+            {/* Thinking indicator */}
+            <ThinkingDots />
+
+            {/* Skeleton answer */}
+            <div style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)',
+              padding: 14,
+            }}>
+              <SkeletonBlock width={60} height={10} style={{ marginBottom: 12 }} />
+              <SkeletonBlock width="100%" height={12} style={{ marginBottom: 6 }} />
+              <SkeletonBlock width="95%" height={12} style={{ marginBottom: 6 }} />
+              <SkeletonBlock width="88%" height={12} />
+            </div>
+
+            {/* Skeleton citations */}
+            <div>
+              <SkeletonBlock width={80} height={10} style={{ marginBottom: 8 }} />
+              {[1, 2].map((i) => (
+                <div key={i} style={{
+                  padding: '10px 12px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  marginBottom: 6,
+                }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <SkeletonBlock width={60} height={12} />
+                    <div style={{ flex: 1 }} />
+                    <SkeletonBlock width={80} height={6} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Result */}
+        {ragResult && !ragQuerying && (
+          <div className="animate-fade-in">
+            {/* User question */}
+            {displayedQuestion && (
+              <div style={{
+                padding: '8px 12px',
+                background: 'var(--bg-tertiary)',
+                borderRadius: 'var(--radius-sm)',
+                marginBottom: 10,
+                fontSize: 12,
+                color: 'var(--text-muted)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+              }}>
+                <Search size={13} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 1 }} />
+                <span style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>{displayedQuestion}</span>
+              </div>
+            )}
+
+            {/* Answer with markdown */}
+            <div style={{
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)',
+              padding: 14,
+              marginBottom: 12,
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                marginBottom: 10,
+              }}>
+                <div style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: '50%',
+                  background: 'var(--accent-glow)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  <Sparkles size={11} style={{ color: 'var(--accent)' }} />
+                </div>
+                <span style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                }}>
+                  回答
+                </span>
+                {isDemoMode && <ModeBadge isDemo={true} />}
+              </div>
+              <div className="md-content" style={{
+                fontSize: 13,
+                lineHeight: 1.8,
+                color: 'var(--text-secondary)',
+              }}>
+                <ReactMarkdown>{ragResult.answer}</ReactMarkdown>
+              </div>
+            </div>
+
+            {/* Citations */}
+            {ragResult.citations?.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  marginBottom: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}>
+                  <BookOpen size={12} />
+                  引用来源 ({ragResult.citations.length})
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {ragResult.citations.map((cite, i) => (
+                    <CitationCard
+                      key={i}
+                      citation={cite}
+                      index={i}
+                      sourceChunk={ragResult.source_chunks?.[i]}
+                      expanded={expandedChunk === i}
+                      onToggle={() => setExpandedChunk(expandedChunk === i ? null : i)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* History */}
             {ragHistory.length > 1 && (
@@ -327,13 +739,14 @@ export default function RAGTab() {
                   gap: 4,
                 }}>
                   <BarChart3 size={12} />
-                  查询历史
+                  查询历史 ({ragHistory.length - 1})
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {ragHistory.slice(0, -1).reverse().map((entry, i) => (
                     <div
                       key={i}
                       onClick={() => setRagResult(entry.result)}
+                      className="animate-fade-in"
                       style={{
                         padding: '6px 10px',
                         background: 'var(--bg-card)',
@@ -342,9 +755,30 @@ export default function RAGTab() {
                         cursor: 'pointer',
                         fontSize: 12,
                         color: 'var(--text-secondary)',
+                        transition: 'var(--transition-fast)',
+                        animationDelay: `${i * 40}ms`,
+                        animationFillMode: 'both',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--border-accent)';
+                        e.currentTarget.style.color = 'var(--text-primary)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = 'var(--border)';
+                        e.currentTarget.style.color = 'var(--text-secondary)';
                       }}
                     >
-                      {entry.question}
+                      <Search size={10} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                      <span style={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {entry.question}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -354,36 +788,24 @@ export default function RAGTab() {
         )}
       </div>
 
-      {/* Error messages */}
-      {(indexError || queryError) && (
-        <div style={{
-          padding: '8px 16px',
-          background: 'var(--red-dim)',
-          borderTop: '1px solid var(--border)',
-          fontSize: 12,
-          color: 'var(--red)',
-        }}>
-          {indexError || queryError}
-        </div>
-      )}
-
-      {/* Input bar — only show when books available */}
-      {hasBooks && (
-        <div style={{
-          padding: '10px 16px',
-          borderTop: '1px solid var(--border)',
-          background: 'var(--bg-secondary)',
-        }}>
+      {/* Input bar */}
+      <div style={{
+        padding: '10px 16px',
+        borderTop: '1px solid var(--border)',
+        background: 'var(--bg-secondary)',
+      }}>
         <div style={{
           display: 'flex',
           gap: 8,
           alignItems: 'flex-end',
         }}>
-          <input
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleQuery()}
-            placeholder="输入基于教材的问题..."
+          <textarea
+            ref={inputRef}
+            value={userQuestion}
+            onChange={(e) => setUserQuestion(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="输入基于教材的问题... (Shift+Enter 换行)"
+            rows={1}
             style={{
               flex: 1,
               padding: '9px 12px',
@@ -392,32 +814,80 @@ export default function RAGTab() {
               borderRadius: 'var(--radius-sm)',
               color: 'var(--text-primary)',
               fontSize: 13,
+              fontFamily: 'var(--font-body)',
+              lineHeight: 1.5,
               outline: 'none',
+              resize: 'none',
+              overflow: 'hidden',
               transition: 'var(--transition-fast)',
+              minHeight: 38,
+              maxHeight: 120,
             }}
-            onFocus={(e) => e.target.style.borderColor = 'var(--border-accent)'}
-            onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+            onFocus={(e) => {
+              e.target.style.borderColor = 'var(--border-accent)';
+              e.target.style.boxShadow = '0 0 0 3px var(--accent-glow)';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = 'var(--border)';
+              e.target.style.boxShadow = 'none';
+            }}
+            onInput={(e) => {
+              e.target.style.height = 'auto';
+              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+            }}
           />
           <button
             onClick={handleQuery}
-            disabled={!question.trim() || ragQuerying}
+            disabled={!userQuestion.trim() || ragQuerying}
             style={{
               padding: '9px 12px',
-              background: question.trim() ? 'var(--accent)' : 'var(--bg-tertiary)',
-              color: question.trim() ? 'var(--text-inverse)' : 'var(--text-muted)',
+              background: userQuestion.trim() && !ragQuerying ? 'var(--accent)' : 'var(--bg-tertiary)',
+              color: userQuestion.trim() && !ragQuerying ? 'var(--text-inverse)' : 'var(--text-muted)',
               border: 'none',
               borderRadius: 'var(--radius-sm)',
-              cursor: question.trim() ? 'pointer' : 'default',
+              cursor: userQuestion.trim() && !ragQuerying ? 'pointer' : 'default',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               transition: 'var(--transition-fast)',
+              flexShrink: 0,
+              minWidth: 38,
+            }}
+            onMouseEnter={(e) => {
+              if (userQuestion.trim() && !ragQuerying) {
+                e.currentTarget.style.transform = 'scale(1.02)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
             }}
           >
-            {ragQuerying ? <Loader2 size={16} className="animate-pulse" /> : <Send size={16} />}
+            {ragQuerying ? (
+              <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Send size={16} />
+            )}
           </button>
         </div>
+        <div style={{
+          marginTop: 6,
+          fontSize: 10,
+          color: 'var(--text-muted)',
+          display: 'flex',
+          justifyContent: 'space-between',
+        }}>
+          <span>Enter 发送 · Shift+Enter 换行</span>
+          {userQuestion.trim() && <span style={{ color: 'var(--accent)' }}>按 Enter 发送问题</span>}
+        </div>
       </div>
-      )}
+
+      {/* Global styles for spin animation */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
